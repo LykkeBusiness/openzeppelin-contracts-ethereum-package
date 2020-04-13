@@ -30,12 +30,11 @@ contract ERC777 is Initializable, Context, IERC777, IERC20 {
     using SafeMath for uint256;
     using Address for address;
 
-    IERC1820Registry constant internal ERC1820_REGISTRY = IERC1820Registry(0x1820a4B7618BdE71Dce8cdc73aAB6C95905faD24);
-
     mapping(address => uint256) private _balances;
 
     uint256 private _totalSupply;
 
+    IERC1820Registry private _erc1820Registry;
     string private _name;
     string private _symbol;
 
@@ -65,11 +64,14 @@ contract ERC777 is Initializable, Context, IERC777, IERC20 {
 
     /**
      * @dev `defaultOperators` may be an empty array.
+     *
+     * `erc1820registry` may be an empty address.
      */
     function initialize(
         string memory name,
         string memory symbol,
-        address[] memory defaultOperators
+        address[] memory defaultOperators,
+        address erc1820registry
     ) public initializer {
         _name = name;
         _symbol = symbol;
@@ -79,9 +81,15 @@ contract ERC777 is Initializable, Context, IERC777, IERC20 {
             _defaultOperators[_defaultOperatorsArray[i]] = true;
         }
 
+        if (erc1820registry == address(0)) {
+            _erc1820Registry = IERC1820Registry(0x1820a4B7618BdE71Dce8cdc73aAB6C95905faD24);
+        } else {
+            _erc1820Registry = IERC1820Registry(erc1820registry);
+        }
+
         // register interfaces
-        ERC1820_REGISTRY.setInterfaceImplementer(address(this), keccak256("ERC777Token"), address(this));
-        ERC1820_REGISTRY.setInterfaceImplementer(address(this), keccak256("ERC20Token"), address(this));
+        _erc1820Registry.setInterfaceImplementer(address(this), keccak256("ERC777Token"), address(this));
+        _erc1820Registry.setInterfaceImplementer(address(this), keccak256("ERC20Token"), address(this));
     }
 
     /**
@@ -319,7 +327,7 @@ contract ERC777 is Initializable, Context, IERC777, IERC20 {
         bytes memory userData,
         bytes memory operatorData
     )
-    internal
+        internal
     {
         require(account != address(0), "ERC777: mint to the zero address");
 
@@ -401,7 +409,7 @@ contract ERC777 is Initializable, Context, IERC777, IERC20 {
         bytes memory userData,
         bytes memory operatorData
     )
-        private
+        internal
     {
         _balances[from] = _balances[from].sub(amount, "ERC777: transfer amount exceeds balance");
         _balances[to] = _balances[to].add(amount);
@@ -439,7 +447,7 @@ contract ERC777 is Initializable, Context, IERC777, IERC20 {
     )
         internal
     {
-        address implementer = ERC1820_REGISTRY.getInterfaceImplementer(from, TOKENS_SENDER_INTERFACE_HASH);
+        address implementer = _erc1820Registry.getInterfaceImplementer(from, TOKENS_SENDER_INTERFACE_HASH);
         if (implementer != address(0)) {
             IERC777Sender(implementer).tokensToSend(operator, from, to, amount, userData, operatorData);
         }
@@ -467,7 +475,7 @@ contract ERC777 is Initializable, Context, IERC777, IERC20 {
     )
         internal
     {
-        address implementer = ERC1820_REGISTRY.getInterfaceImplementer(to, TOKENS_RECIPIENT_INTERFACE_HASH);
+        address implementer = _erc1820Registry.getInterfaceImplementer(to, TOKENS_RECIPIENT_INTERFACE_HASH);
         if (implementer != address(0)) {
             IERC777Recipient(implementer).tokensReceived(operator, from, to, amount, userData, operatorData);
         } else if (requireReceptionAck) {
